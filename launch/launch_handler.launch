@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="capra_launch_handler" name="launch_handler" type="launchHandler.py" output="screen"/>
+</launch>

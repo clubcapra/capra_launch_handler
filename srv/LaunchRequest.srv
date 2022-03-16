@@ -1,0 +1,6 @@
+string package
+string fileName
+---
+string message
+bool isLaunched
+string fileName
