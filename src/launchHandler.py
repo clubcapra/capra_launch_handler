@@ -5,7 +5,7 @@ import rospy
 import rospkg
 import subprocess
 import xml.etree.ElementTree as ET
-from capra_tutorial.srv import LaunchRequest, LaunchListRequest
+from capra_launch_handler.srv import LaunchRequest, LaunchListRequest
 
 launchedFiles = dict()
 
