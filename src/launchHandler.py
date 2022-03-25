@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-from socket import timeout
 from time import sleep
 from xmlrpc.client import Boolean
 import rospy
 import rospkg
 import subprocess
 import xml.etree.ElementTree as ET
-from capra_launch_handler.srv import LaunchRequest, LaunchListRequest
-from subprocess import PIPE
+from capra_tutorial.srv import LaunchRequest, LaunchListRequest
 
 launchedFiles = dict()
 
@@ -34,8 +32,21 @@ def launchFile(package, fileName):
         launchMsg.message = fileName + " was not launched"
         launchMsg.isLaunched = False
     return launchMsg
-
 def killLaunchFile(package, fileName):
+    isLaunched = False
+    isLaunched = recursivekillLaunchFile(package, fileName)
+    launchMsg = LaunchMsg()
+    launchMsg.fileName = fileName
+    if(not isLaunched):
+        launchedFiles.pop(fileName)
+        launchMsg.message = "Nodes in " + fileName + " were killed"
+        launchMsg.isLaunched = False
+    else:
+        launchMsg.message = "Nodes in " + fileName + " were not killed"
+        launchMsg.isLaunched = True
+    return launchMsg
+    
+def recursivekillLaunchFile(package, fileName):
     #Get launch file path
     rospack = rospkg.RosPack()
     path = rospack.get_path(package) + '/launch/' + fileName
@@ -43,22 +54,32 @@ def killLaunchFile(package, fileName):
     tree = ET.parse(path)
     root = tree.getroot()
     nodes = root.findall('node')
-    launchMsg = LaunchMsg()
-    launchMsg.fileName = fileName
+    includes = root.findall('include')
+    #Find robot_namespace arg
+    robot_namespace = root.find('arg[@name="robot_namespace"]')
+    isLaunched = False
+    for include in includes:
+        #Find the file to include
+        fileToInclude = include.attrib['file']
+        #Kill the nodes in the included file
+        packageName = fileToInclude.split(' ')[1].split(')')[0]
+        includeFileName = fileToInclude.split('/')[2]
+        isLaunched = recursivekillLaunchFile(packageName, includeFileName)
     for node in nodes:
         #Kill each node
-        nodeName = node.attrib['name']
+        if('ns' in node.attrib):
+            ns = robot_namespace.attrib['default'] if robot_namespace is not None else node.attrib['ns']
+            nodeName = ns + '/' + node.attrib['name']
+        else:
+            nodeName = node.attrib['name']  
         command = "rosnode kill {0}".format(nodeName)
         p = subprocess.Popen(command, shell=True)
         state = p.poll()
         if state is not None:
-            launchMsg.message = "File was not killed"
-            launchMsg.isLaunched = True
-            return launchMsg
-    launchMsg.message = "Nodes in " + fileName + " were killed"
-    launchMsg.isLaunched = False
-    launchedFiles.pop(fileName)
-    return launchMsg
+            return True
+    
+    
+    return isLaunched
 
 def killAll():
      for fileName, package in launchedFiles.items():
