@@ -32,6 +32,7 @@ def launchFile(package, fileName):
         launchMsg.message = fileName + " was not launched"
         launchMsg.isLaunched = False
     return launchMsg
+
 def killLaunchFile(package, fileName):
     isLaunched = False
     isLaunched = recursivekillLaunchFile(package, fileName)
@@ -55,20 +56,18 @@ def recursivekillLaunchFile(package, fileName):
     root = tree.getroot()
     nodes = root.findall('node')
     includes = root.findall('include')
-    #Find robot_namespace arg
-    robot_namespace = root.find('arg[@name="robot_namespace"]')
     isLaunched = False
     for include in includes:
         #Find the file to include
         fileToInclude = include.attrib['file']
         #Kill the nodes in the included file
         packageName = fileToInclude.split(' ')[1].split(')')[0]
-        includeFileName = fileToInclude.split('/')[2]
+        includeFileName = getNameValue(fileToInclude.split('/')[2])
         isLaunched = recursivekillLaunchFile(packageName, includeFileName)
     for node in nodes:
         #Kill each node
         if('ns' in node.attrib):
-            ns = robot_namespace.attrib['default'] if robot_namespace is not None else node.attrib['ns']
+            ns = getNameValue(node.attrib['ns'], root)
             nodeName = ns + '/' + node.attrib['name']
         else:
             nodeName = node.attrib['name']  
@@ -80,6 +79,15 @@ def recursivekillLaunchFile(package, fileName):
     
     
     return isLaunched
+
+#Check is $(arg xxxxx) is in the string
+def getNameValue(string, root):
+    if '$(arg' in string:
+        argName = string.split(' ')[1].split(')')[0]
+        return root.find('arg[@name="' + argName + '"').attrib['default']
+    else:
+        return string
+
 
 def killAll():
      for fileName, package in launchedFiles.items():
