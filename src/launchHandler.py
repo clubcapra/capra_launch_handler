@@ -62,7 +62,7 @@ def recursivekillLaunchFile(package, fileName):
         fileToInclude = include.attrib['file']
         #Kill the nodes in the included file
         packageName = fileToInclude.split(' ')[1].split(')')[0]
-        includeFileName = getNameValue(fileToInclude.split('/')[2])
+        includeFileName = getNameValue(fileToInclude.split('/launch/')[1], root)
         isLaunched = recursivekillLaunchFile(packageName, includeFileName)
     for node in nodes:
         #Kill each node
@@ -70,7 +70,7 @@ def recursivekillLaunchFile(package, fileName):
             ns = getNameValue(node.attrib['ns'], root)
             nodeName = ns + '/' + node.attrib['name']
         else:
-            nodeName = node.attrib['name']  
+            nodeName = getNameValue(node.attrib['name'], root)  
         command = "rosnode kill {0}".format(nodeName)
         p = subprocess.Popen(command, shell=True)
         state = p.poll()
@@ -83,8 +83,9 @@ def recursivekillLaunchFile(package, fileName):
 #Check is $(arg xxxxx) is in the string
 def getNameValue(string, root):
     if '$(arg' in string:
-        argName = string.split(' ')[1].split(')')[0]
-        return root.find('arg[@name="' + argName + '"').attrib['default']
+        splitName = string.split(' ')[1].split(')')
+        arg = root.find('arg[@name="' + splitName[0] + '"]')
+        return arg.attrib['default'] + splitName[1]
     else:
         return string
 
