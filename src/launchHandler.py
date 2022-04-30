@@ -1,14 +1,18 @@
 #!/usr/bin/env python
 from time import sleep
-from xmlrpc.client import Boolean
 import rospy
-import rospkg
+import signal
 import subprocess
-import xml.etree.ElementTree as ET
+import os
 from capra_launch_handler.srv import LaunchRequest, LaunchListRequest
 
 launchedFiles = dict()
 
+class LaunchFile: 
+    def __init__(self, package, fileName, pid):
+        self.package = package
+        self.fileName = fileName
+        self.pid = pid
 class LaunchMsg:
     def __init__(self):
         self.message = ""
@@ -18,7 +22,8 @@ class LaunchMsg:
 def launchFile(package, fileName):
     command = "roslaunch  {0} {1}".format(package, fileName)
 
-    p = subprocess.Popen(command, shell=True)
+    p = subprocess.Popen(command, shell=True, preexec_fn=os.setsid)
+
     launchMsg = LaunchMsg()
     #Sleep to make sure the launch command has time to fail if there's an error
     sleep(1)
@@ -26,73 +31,30 @@ def launchFile(package, fileName):
     launchMsg.fileName = fileName
     if state is None:
         launchMsg.message = fileName + " was launched"
-        launchedFiles[fileName] = package
+        launchedFiles[fileName] = LaunchFile(package, fileName, p.pid)
         launchMsg.isLaunched = True
     else:
         launchMsg.message = fileName + " was not launched"
         launchMsg.isLaunched = False
     return launchMsg
 
-def killLaunchFile(package, fileName):
-    isLaunched = False
-    isLaunched = recursivekillLaunchFile(package, fileName)
+def killLaunchFile(fileName):
     launchMsg = LaunchMsg()
     launchMsg.fileName = fileName
-    if(not isLaunched):
-        launchedFiles.pop(fileName)
-        launchMsg.message = "Nodes in " + fileName + " were killed"
+    if fileName in launchedFiles:
+        pid = launchedFiles[fileName].pid
+        os.killpg(os.getpgid(pid), signal.SIGINT)
+        del launchedFiles[fileName]
+        launchMsg.message = fileName + " was killed"
         launchMsg.isLaunched = False
     else:
-        launchMsg.message = "Nodes in " + fileName + " were not killed"
-        launchMsg.isLaunched = True
+        launchMsg.message = fileName + " was not launched"
+        launchMsg.isLaunched = False
     return launchMsg
-    
-def recursivekillLaunchFile(package, fileName):
-    #Get launch file path
-    rospack = rospkg.RosPack()
-    path = rospack.get_path(package) + '/launch/' + fileName
-    #Get all nodes from the xml launch file
-    tree = ET.parse(path)
-    root = tree.getroot()
-    nodes = root.findall('node')
-    includes = root.findall('include')
-    isLaunched = False
-    for include in includes:
-        #Find the file to include
-        fileToInclude = include.attrib['file']
-        #Kill the nodes in the included file
-        packageName = fileToInclude.split(' ')[1].split(')')[0]
-        includeFileName = getNameValue(fileToInclude.split('/launch/')[1], root)
-        isLaunched = recursivekillLaunchFile(packageName, includeFileName)
-    for node in nodes:
-        #Kill each node
-        if('ns' in node.attrib):
-            ns = getNameValue(node.attrib['ns'], root)
-            nodeName = ns + '/' + node.attrib['name']
-        else:
-            nodeName = getNameValue(node.attrib['name'], root)  
-        command = "rosnode kill {0}".format(nodeName)
-        p = subprocess.Popen(command, shell=True)
-        state = p.poll()
-        if state is not None:
-            return True
-    
-    
-    return isLaunched
-
-#Check is $(arg xxxxx) is in the string
-def getNameValue(string, root):
-    if '$(arg' in string:
-        splitName = string.split(' ')[1].split(')')
-        arg = root.find('arg[@name="' + splitName[0] + '"]')
-        return arg.attrib['default'] + splitName[1]
-    else:
-        return string
-
 
 def killAll():
-     for fileName, package in launchedFiles.items():
-         killLaunchFile(package, fileName)
+     for launchFile in launchedFiles.values():
+         killLaunchFile(launchFile.fileName)
 
 def launchCallback(data):
     package = data.package
@@ -101,17 +63,22 @@ def launchCallback(data):
     if fileName not in launchedFiles:
         launchMsg = launchFile(package, fileName)
     else:
-        launchMsg = killLaunchFile(package, fileName)
+        launchMsg = killLaunchFile(fileName)
     return launchMsg.message, launchMsg.isLaunched, launchMsg.fileName
 
-def listCallback(data):
-    return launchedFiles.values(), launchedFiles.keys()
+def getLaunchedFiles(data):
+    #Get array of package names
+    packageNames = []
+    for launchedFile in launchedFiles.values(): 
+        packageNames.append(launchedFile.package)
+
+    return packageNames, launchedFiles.keys()
 
 def service():
     rospy.init_node('launchHandlerService', anonymous=True)
     rospy.on_shutdown(killAll)
     rospy.Service("launchHandler/launchFile", LaunchRequest, launchCallback)
-    rospy.Service("launchHandler/getAllLaunchedFiles", LaunchListRequest, listCallback)
+    rospy.Service("launchHandler/getAllLaunchedFiles", LaunchListRequest, getLaunchedFiles)
     rospy.spin()
 
 if __name__ == '__main__':
