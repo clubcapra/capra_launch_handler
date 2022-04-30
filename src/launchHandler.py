@@ -66,11 +66,10 @@ def launchCallback(data):
         launchMsg = killLaunchFile(fileName)
     return launchMsg.message, launchMsg.isLaunched, launchMsg.fileName
 
-def listCallback(data):
+def getLaunchedFiles(data):
     #Get array of package names
     packageNames = []
-    for launchedFile in launchedFiles.values():
-        
+    for launchedFile in launchedFiles.values(): 
         packageNames.append(launchedFile.package)
 
     return packageNames, launchedFiles.keys()
@@ -79,7 +78,7 @@ def service():
     rospy.init_node('launchHandlerService', anonymous=True)
     rospy.on_shutdown(killAll)
     rospy.Service("launchHandler/launchFile", LaunchRequest, launchCallback)
-    rospy.Service("launchHandler/getAllLaunchedFiles", LaunchListRequest, listCallback)
+    rospy.Service("launchHandler/getAllLaunchedFiles", LaunchListRequest, getLaunchedFiles)
     rospy.spin()
 
 if __name__ == '__main__':
