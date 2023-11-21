@@ -1,7 +1,12 @@
 [Unit]
 Descript=Robot launch script
+After=network-online.target
 
 [Service]
+User=markhor
+Restart=on-failure
+RestartSec=5s
+
 ExecStart=/usr/bin/launch_script.sh
 
 [Install]
